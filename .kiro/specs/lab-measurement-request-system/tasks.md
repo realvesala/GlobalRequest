@@ -1,0 +1,233 @@
+# Implementation Plan: Lab Measurement Request System — Proof of Concept
+
+## Overview
+
+A minimal local PoC to demonstrate the core request lifecycle to stakeholders. Uses a Node.js/Express backend with SQLite (via better-sqlite3), a React frontend, and mock auth with role switching. No cloud infrastructure, no real email, no file object storage — results are stored as local files. The goal is a single `npm run dev` that brings up the full stack locally.
+
+## Tasks
+
+- [x] 1. Project scaffold and local dev setup
+  - Create monorepo structure: `packages/api` (Express + TypeScript) and `packages/web` (React + TypeScript + Vite)
+  - Add root `package.json` with a single `dev` script that starts both packages concurrently
+  - Configure TypeScript (`tsconfig.json`) for both packages
+  - Set up SQLite database initialization in `packages/api/src/db.ts` using `better-sqlite3`
+  - Create DB schema migration script that creates all tables on first run (users, labs, methods, requests, request_status_history, results, notifications)
+  - Seed script with: 4 demo users (one per role), 2 labs, 3 methods, and lab_methods associations
+  - _Requirements: 1.1, 2.1, 9.1, 9.3_
+
+- [x] 2. Mock auth and role switching
+  - [x] 2.1 Implement mock auth middleware in `packages/api/src/middleware/auth.ts`
+    - Read `X-Mock-User-Id` header to identify the current user (no real SSO)
+    - Look up user from SQLite and attach to `req.user`
+    - Return `401` if header is missing or user not found
+    - _Requirements: 1.1, 1.2_
+  - [x] 2.2 Add `GET /auth/me` endpoint returning current user and role
+    - _Requirements: 1.2_
+  - [x] 2.3 Build role-switcher UI component in React
+    - Dropdown in the app header listing the 4 seeded demo users
+    - Stores selected user ID in `localStorage` and sends it as `X-Mock-User-Id` on every API request
+    - _Requirements: 2.1_
+  - [x] 2.4 Write property test for RBAC enforcement (Property 1)
+    - **Property 1: Role-Based Access Control Enforcement**
+    - **Validates: Requirements 2.3, 2.4**
+    - For any role and any out-of-scope endpoint, access is denied and logged
+    - Tag: `// Feature: lab-measurement-request-system, Property 1: Role-Based Access Control Enforcement`
+
+- [x] 3. Lab and method admin API + UI
+  - [x] 3.1 Implement CRUD endpoints for labs and methods
+    - `POST/GET/PUT/DELETE /admin/labs` and `POST/GET/PUT/DELETE /admin/methods`
+    - Enforce Admin-only access via RBAC middleware
+    - _Requirements: 9.1, 9.2, 9.3, 9.4_
+  - [x] 3.2 Build Admin UI page with tabs for Labs and Methods
+    - List, create, and deactivate labs and methods
+    - Show which methods each lab supports (lab_methods join)
+    - _Requirements: 9.1, 9.3_
+  - [x] 3.3 Write property test for deactivated method rejection (Property 20)
+    - **Property 20: Deactivated Method Rejection**
+    - **Validates: Requirements 9.4**
+    - For any deactivated method, submission referencing it is rejected
+    - Tag: `// Feature: lab-measurement-request-system, Property 20: Deactivated Method Rejection`
+  - [x] 3.4 Write property test for lab record round trip (Property 19)
+    - **Property 19: Lab Record Round Trip**
+    - **Validates: Requirements 9.1**
+    - For any created lab record, retrieval returns identical field values
+    - Tag: `// Feature: lab-measurement-request-system, Property 19: Lab Record Round Trip`
+
+- [x] 4. Request submission
+  - [x] 4.1 Implement `POST /requests` endpoint
+    - Validate required fields: method_id, material_description, purpose_description, desired_completion
+    - Reject submissions referencing inactive methods (`422`)
+    - Assign UUID, record submission timestamp and requestor identity, set status to `Submitted`
+    - _Requirements: 3.1, 3.2, 3.3, 3.4_
+  - [x] 4.2 Build Requestor submission form in React
+    - Method selector (dropdown of active methods), material description, purpose, desired completion date
+    - Show field-level validation errors from API response
+    - _Requirements: 3.1, 3.3_
+  - [x] 4.3 Write property test for request submission validation (Property 2)
+    - **Property 2: Request Submission Validation**
+    - **Validates: Requirements 3.1, 3.3**
+    - For any submission with missing fields, rejection identifies each missing field
+    - Tag: `// Feature: lab-measurement-request-system, Property 2: Request Submission Validation`
+  - [x] 4.4 Write property test for successful submission state (Property 3)
+    - **Property 3: Successful Submission State**
+    - **Validates: Requirements 3.2, 3.4**
+    - For any valid submission, result has unique ID, timestamp, requestor, and status "Submitted"
+    - Tag: `// Feature: lab-measurement-request-system, Property 3: Successful Submission State`
+
+- [x] 5. Checkpoint — Ensure all tests pass, ask the user if questions arise.
+
+- [x] 6. Lab routing and assignment
+  - [x] 6.1 Implement `GET /requests/:id/candidates` endpoint
+    - Filter labs by method support and active status
+    - Rank by region proximity (same region first), then by ascending open request count
+    - _Requirements: 5.1, 5.2_
+  - [x] 6.2 Implement `POST /requests/:id/assign` endpoint (Lab_Manager)
+    - Set status to `Assigned`, record lab ID, write status history entry
+    - If no candidates exist, set status to `Unroutable` and create in-app notification for requestor
+    - _Requirements: 5.3, 5.4_
+  - [x] 6.3 Implement `POST /requests/:id/override-route` endpoint (Lab_Manager)
+    - Accept `reason` in body, persist override reason and Lab_Manager identity on request record
+    - _Requirements: 5.5_
+  - [x] 6.4 Build Lab_Manager queue UI page
+    - List incoming `Submitted` requests with candidate lab suggestions
+    - Accept/assign button and manual override form with reason field
+    - _Requirements: 5.1, 5.2, 5.3, 5.5_
+  - [x] 6.5 Write property test for candidate lab capability filter (Property 7)
+    - **Property 7: Candidate Lab Capability Filter**
+    - **Validates: Requirements 5.1, 9.2**
+    - For any method, all candidate labs support that method and none are inactive
+    - Tag: `// Feature: lab-measurement-request-system, Property 7: Candidate Lab Capability Filter`
+  - [x] 6.6 Write property test for assignment state transition (Property 9)
+    - **Property 9: Assignment State Transition**
+    - **Validates: Requirements 5.3**
+    - For any accepted request, status becomes Assigned and lab ID is recorded
+    - Tag: `// Feature: lab-measurement-request-system, Property 9: Assignment State Transition`
+  - [x] 6.7 Write property test for routing override audit (Property 10)
+    - **Property 10: Routing Override Audit**
+    - **Validates: Requirements 5.5**
+    - For any routing override, reason and identity are persisted
+    - Tag: `// Feature: lab-measurement-request-system, Property 10: Routing Override Audit`
+
+- [x] 7. Request processing (Lab_Technician flow)
+  - [x] 7.1 Implement `POST /requests/:id/assign-technician` endpoint (Lab_Manager)
+    - Set status to `In_Progress`, record technician ID, write status history entry, create in-app notification for technician
+    - _Requirements: 6.1_
+  - [x] 7.2 Implement `POST /requests/:id/reassign-technician` endpoint (Lab_Manager)
+    - Update technician ID without changing status
+    - _Requirements: 6.4_
+  - [x] 7.3 Implement `POST /requests/:id/notes` endpoint (Lab_Technician)
+    - Append a progress note (stored as a JSON array on the request or a separate notes table)
+    - _Requirements: 6.2_
+  - [x] 7.4 Build Lab_Technician work queue UI page
+    - List `In_Progress` requests assigned to the current technician
+    - Add progress note form and "Mark complete" button (triggers result upload flow)
+    - _Requirements: 6.1, 6.2, 6.3_
+  - [x] 7.5 Write property test for technician assignment and status invariant (Property 11)
+    - **Property 11: Technician Assignment and Status Invariant**
+    - **Validates: Requirements 6.1, 6.4**
+    - For any technician assignment, status becomes In_Progress; reassignment preserves status
+    - Tag: `// Feature: lab-measurement-request-system, Property 11: Technician Assignment and Status Invariant`
+
+- [x] 8. Status history and lifecycle enforcement
+  - [x] 8.1 Implement `GET /requests/:id/history` endpoint
+    - Return ordered list of status history entries (previous_status, new_status, changed_by, changed_at)
+    - _Requirements: 4.1, 4.2_
+  - [x] 8.2 Add status transition guard in a shared `transitionStatus` helper
+    - Enforce allowed transitions: Submitted→Assigned, Assigned→In_Progress, In_Progress→Results_Ready, Results_Ready→Closed, Submitted→Unroutable
+    - Return `409 Conflict` with current status and allowed transitions for illegal moves
+    - _Requirements: 4.1_
+  - [x] 8.3 Implement edit-permission guard on `PUT /requests/:id`
+    - Allow edits only when status is `Submitted` and actor is the owning requestor
+    - Return `403` otherwise
+    - _Requirements: 4.3, 4.4_
+  - [x] 8.4 Write property test for status transition ordering (Property 4)
+    - **Property 4: Status Transition Ordering**
+    - **Validates: Requirements 4.1**
+    - For any sequence of status transitions, only allowed orderings are accepted
+    - Tag: `// Feature: lab-measurement-request-system, Property 4: Status Transition Ordering`
+  - [x] 8.5 Write property test for status change audit trail (Property 5)
+    - **Property 5: Status Change Audit Trail**
+    - **Validates: Requirements 4.2**
+    - For any status change, history entry contains all four required fields
+    - Tag: `// Feature: lab-measurement-request-system, Property 5: Status Change Audit Trail`
+  - [x] 8.6 Write property test for edit permissions by status (Property 6)
+    - **Property 6: Edit Permissions by Status**
+    - **Validates: Requirements 4.3, 4.4**
+    - For any request, edit permission matches status
+    - Tag: `// Feature: lab-measurement-request-system, Property 6: Edit Permissions by Status`
+
+- [x] 9. Result upload and delivery
+  - [x] 9.1 Implement `POST /requests/:id/results` endpoint (Lab_Technician)
+    - Accept multipart file upload, store file to local `uploads/` directory, record metadata in `results` table
+    - Require at least one result before allowing transition to `Results_Ready`; return `422` if attempted without
+    - Set status to `Results_Ready` and create in-app notification for requestor
+    - _Requirements: 6.3, 7.1, 7.2_
+  - [x] 9.2 Implement `GET /requests/:id/results/:rid` download endpoint
+    - Stream file from local `uploads/` directory
+    - _Requirements: 7.2_
+  - [x] 9.3 Implement `POST /requests/:id/acknowledge` endpoint (Requestor)
+    - Set status to `Closed`, record acknowledgement timestamp in status history
+    - _Requirements: 7.3_
+  - [x] 9.4 Build result view in Requestor request detail page
+    - List attached results with download links
+    - "Acknowledge receipt" button visible when status is `Results_Ready`
+    - _Requirements: 7.2, 7.3_
+  - [x] 9.5 Write property test for result required for completion (Property 12)
+    - **Property 12: Result Required for Completion**
+    - **Validates: Requirements 6.3**
+    - For any completion attempt without results, transition is rejected
+    - Tag: `// Feature: lab-measurement-request-system, Property 12: Result Required for Completion`
+  - [x] 9.6 Write property test for acknowledgement closes request (Property 14)
+    - **Property 14: Acknowledgement Closes Request**
+    - **Validates: Requirements 7.3**
+    - For any acknowledgement, status becomes Closed and timestamp is recorded
+    - Tag: `// Feature: lab-measurement-request-system, Property 14: Acknowledgement Closes Request`
+
+- [x] 10. Checkpoint — Ensure all tests pass, ask the user if questions arise.
+
+- [x] 11. In-app notifications
+  - [x] 11.1 Implement `GET /notifications` and `PUT /notifications/:id/read` endpoints
+    - Return notifications for the current user, ordered by created_at descending
+    - _Requirements: 8.1_
+  - [x] 11.2 Add notification creation calls at each status transition (in `transitionStatus` helper)
+    - Create notifications for requestor, assigned technician, and lab manager on every status change
+    - _Requirements: 8.1_
+  - [x] 11.3 Build notification bell component in React header
+    - Poll `GET /notifications` every 10 seconds (WebSocket is out of scope for PoC)
+    - Show unread count badge, dropdown list of recent notifications, mark-as-read on click
+    - _Requirements: 8.1_
+  - [x] 11.4 Write property test for notification creation on status change (Property 15)
+    - **Property 15: Notification Creation on Status Change**
+    - **Validates: Requirements 8.1**
+    - For any status change, in-app notifications are created for all associated users
+    - Tag: `// Feature: lab-measurement-request-system, Property 15: Notification Creation on Status Change`
+
+- [x] 12. Request list and detail views
+  - [x] 12.1 Implement `GET /requests` endpoint with role-based filtering
+    - Requestor: own requests only
+    - Lab_Technician: requests assigned to them
+    - Lab_Manager: all requests for their lab
+    - Admin: all requests
+    - _Requirements: 4.5_
+  - [x] 12.2 Implement `GET /requests/:id` endpoint
+    - Return full request detail including status history and assigned users
+    - _Requirements: 4.5_
+  - [x] 12.3 Build request list page in React (role-aware)
+    - Table with columns: ID, method, status, submitted date, assigned lab
+    - Clicking a row navigates to request detail
+    - _Requirements: 4.5_
+  - [x] 12.4 Build request detail page in React
+    - Show all request fields, current status, status history timeline, notes, and results section
+    - Render role-appropriate action buttons (edit for Requestor at Submitted, assign for Lab_Manager, etc.)
+    - _Requirements: 4.1, 4.2, 4.5_
+
+- [x] 13. Final checkpoint — Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for a faster demo build
+- PoC intentionally omits: real SSO, email delivery, WebSocket push, object storage, 7-year retention, multi-region deployment, and performance requirements
+- Role switching via the header dropdown replaces SSO for stakeholder demos
+- SQLite database file is created at `packages/api/data/poc.db` on first run
+- Local file uploads are stored under `packages/api/uploads/`
+- Each task references specific requirements for traceability back to the full spec
