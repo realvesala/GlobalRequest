@@ -90,6 +90,7 @@ A minimal local PoC to demonstrate the core request lifecycle to stakeholders. U
     - _Requirements: 5.5_
   - [x] 6.4 Build Lab_Manager queue UI page
     - List incoming `Submitted` requests with candidate lab suggestions
+    - List `Assigned` requests in der Region mit Techniker-Zuweisung (`assign-technician`)
     - Accept/assign button and manual override form with reason field
     - _Requirements: 5.1, 5.2, 5.3, 5.5_
   - [x] 6.5 Write property test for candidate lab capability filter (Property 7)
@@ -111,15 +112,17 @@ A minimal local PoC to demonstrate the core request lifecycle to stakeholders. U
 - [x] 7. Request processing (Lab_Technician flow)
   - [x] 7.1 Implement `POST /requests/:id/assign-technician` endpoint (Lab_Manager)
     - Set status to `In_Progress`, record technician ID, write status history entry, create in-app notification for technician
+    - `GET /requests/technicians` — Technikerliste (Region für Manager, alle für Admin) für die Zuweisungs-UI
     - _Requirements: 6.1_
   - [x] 7.2 Implement `POST /requests/:id/reassign-technician` endpoint (Lab_Manager)
     - Update technician ID without changing status
     - _Requirements: 6.4_
   - [x] 7.3 Implement `POST /requests/:id/notes` endpoint (Lab_Technician)
     - Append a progress note (stored as a JSON array on the request or a separate notes table)
+    - Nur wenn Auftrag `In_Progress` **und** dem aufrufenden Techniker zugewiesen (`403` sonst)
     - _Requirements: 6.2_
   - [x] 7.4 Build Lab_Technician work queue UI page
-    - List `In_Progress` requests assigned to the current technician
+    - List `In_Progress` requests assigned to the current technician; zusätzlich regionale `Assigned`-Aufträge (Lab zugewiesen, Techniker noch offen)
     - Add progress note form and "Mark complete" button (triggers result upload flow)
     - _Requirements: 6.1, 6.2, 6.3_
   - [x] 7.5 Write property test for technician assignment and status invariant (Property 11)
@@ -205,7 +208,7 @@ A minimal local PoC to demonstrate the core request lifecycle to stakeholders. U
 - [x] 12. Request list and detail views
   - [x] 12.1 Implement `GET /requests` endpoint with role-based filtering
     - Requestor: own requests only
-    - Lab_Technician: requests assigned to them
+    - Lab_Technician: persönlich zugewiesen **oder** `Assigned` mit Lab in gleicher Region (Pool)
     - Lab_Manager: all requests for their lab
     - Admin: all requests
     - _Requirements: 4.5_

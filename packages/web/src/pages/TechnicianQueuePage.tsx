@@ -41,7 +41,14 @@ export default function TechnicianQueuePage(): React.ReactElement {
         }
         const data = await res.json() as { requests?: Request[] } | Request[];
         const list = Array.isArray(data) ? data : (data.requests ?? []);
-        setRequests(list.filter((r) => r.status === 'In_Progress'));
+        // Assigned = Lab vom Manager zugewiesen, Techniker-Zuweisung steht noch aus; In_Progress = aktiv bearbeiten
+        const active = list.filter((r) => r.status === 'Assigned' || r.status === 'In_Progress');
+        active.sort((a, b) => {
+          if (a.status === 'In_Progress' && b.status !== 'In_Progress') return -1;
+          if (a.status !== 'In_Progress' && b.status === 'In_Progress') return 1;
+          return 0;
+        });
+        setRequests(active);
       })
       .catch(() => {
         setRequestsUnavailable(true);
@@ -125,7 +132,9 @@ export default function TechnicianQueuePage(): React.ReactElement {
       )}
 
       {!requestsUnavailable && !loadError && requests.length === 0 && (
-        <p style={{ color: '#888' }}>No in-progress requests assigned to you.</p>
+        <p style={{ color: '#888' }}>
+          Keine Aufträge für Ihr Lab (Region) oder für Sie persönlich zugewiesen — weder „Assigned“ noch „In_Progress“.
+        </p>
       )}
 
       {requests.map((req) => (
@@ -159,8 +168,8 @@ export default function TechnicianQueuePage(): React.ReactElement {
             </div>
             <span
               style={{
-                background: '#fff3cd',
-                color: '#856404',
+                background: req.status === 'Assigned' ? '#e7f3ff' : '#fff3cd',
+                color: req.status === 'Assigned' ? '#004085' : '#856404',
                 padding: '0.2rem 0.6rem',
                 borderRadius: '12px',
                 fontSize: '0.8rem',
@@ -171,60 +180,71 @@ export default function TechnicianQueuePage(): React.ReactElement {
             </span>
           </div>
 
-          {/* Progress note form */}
-          <form
-            onSubmit={(e) => handleNoteSubmit(e, req.id)}
-            style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', maxWidth: '480px' }}
-          >
-            <label style={{ fontSize: '0.9rem', fontWeight: 500 }}>Add Progress Note</label>
-            {noteError[req.id] && (
-              <p style={{ color: 'red', margin: 0, fontSize: '0.85rem' }}>{noteError[req.id]}</p>
-            )}
-            {noteSuccess[req.id] && (
-              <p style={{ color: 'green', margin: 0, fontSize: '0.85rem' }}>{noteSuccess[req.id]}</p>
-            )}
-            <textarea
-              rows={3}
-              required
-              value={noteText[req.id] ?? ''}
-              onChange={(e) =>
-                setNoteText((prev) => ({ ...prev, [req.id]: e.target.value }))
-              }
-              placeholder="Describe progress or findings…"
-              style={textareaStyle}
-            />
-            <button
-              type="submit"
-              disabled={noteSubmitting[req.id] || !noteText[req.id]?.trim()}
-              style={{ ...primaryBtn, alignSelf: 'flex-start' }}
-            >
-              {noteSubmitting[req.id] ? 'Saving…' : 'Add Note'}
-            </button>
-          </form>
+          {req.status === 'Assigned' && (
+            <p style={{ marginTop: '0.75rem', padding: '0.65rem 0.85rem', background: '#e7f3ff', borderRadius: '6px', fontSize: '0.9rem' }}>
+              Dieser Auftrag ist Ihrem Lab zugewiesen. Der Lab-Manager muss Sie noch unter <strong>Assign technician</strong> zuordnen —
+              danach wird der Status <strong>In_Progress</strong> und Sie können Notizen und Ergebnisse erfassen.
+            </p>
+          )}
 
-          {/* Mark complete */}
-          <div style={{ marginTop: '0.75rem' }}>
-            <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 500 }}>
-              Upload Result File
-              <input
-                type="file"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  setSelectedFile((prev) => ({ ...prev, [req.id]: f }));
-                }}
-                style={{ display: 'block', marginTop: '0.35rem' }}
-              />
-            </label>
-            {uploadError[req.id] && <p style={{ color: 'red', margin: '0.35rem 0 0.2rem' }}>{uploadError[req.id]}</p>}
-            {uploadSuccess[req.id] && <p style={{ color: 'green', margin: '0.35rem 0 0.2rem' }}>{uploadSuccess[req.id]}</p>}
-            <button
-              onClick={() => void handleResultUpload(req.id)}
-              disabled={uploadSubmitting[req.id]}
-              style={{ ...primaryBtn, marginTop: '0.5rem' }}
+          {/* Progress note form — nur nach persönlicher Zuweisung (In_Progress) */}
+          {req.status === 'In_Progress' && (
+            <form
+              onSubmit={(e) => handleNoteSubmit(e, req.id)}
+              style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', maxWidth: '480px' }}
             >
-              {uploadSubmitting[req.id] ? 'Uploading…' : 'Upload & Mark Complete'}
-            </button>
-          </div>
+              <label style={{ fontSize: '0.9rem', fontWeight: 500 }}>Add Progress Note</label>
+              {noteError[req.id] && (
+                <p style={{ color: 'red', margin: 0, fontSize: '0.85rem' }}>{noteError[req.id]}</p>
+              )}
+              {noteSuccess[req.id] && (
+                <p style={{ color: 'green', margin: 0, fontSize: '0.85rem' }}>{noteSuccess[req.id]}</p>
+              )}
+              <textarea
+                rows={3}
+                required
+                value={noteText[req.id] ?? ''}
+                onChange={(e) =>
+                  setNoteText((prev) => ({ ...prev, [req.id]: e.target.value }))
+                }
+                placeholder="Describe progress or findings…"
+                style={textareaStyle}
+              />
+              <button
+                type="submit"
+                disabled={noteSubmitting[req.id] || !noteText[req.id]?.trim()}
+                style={{ ...primaryBtn, alignSelf: 'flex-start' }}
+              >
+                {noteSubmitting[req.id] ? 'Saving…' : 'Add Note'}
+              </button>
+            </form>
+          )}
+
+          {/* Mark complete — nur In_Progress */}
+          {req.status === 'In_Progress' && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 500 }}>
+                Upload Result File
+                <input
+                  type="file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setSelectedFile((prev) => ({ ...prev, [req.id]: f }));
+                  }}
+                  style={{ display: 'block', marginTop: '0.35rem' }}
+                />
+              </label>
+              {uploadError[req.id] && <p style={{ color: 'red', margin: '0.35rem 0 0.2rem' }}>{uploadError[req.id]}</p>}
+              {uploadSuccess[req.id] && <p style={{ color: 'green', margin: '0.35rem 0 0.2rem' }}>{uploadSuccess[req.id]}</p>}
+              <button
+                onClick={() => void handleResultUpload(req.id)}
+                disabled={uploadSubmitting[req.id]}
+                style={{ ...primaryBtn, marginTop: '0.5rem' }}
+              >
+                {uploadSubmitting[req.id] ? 'Uploading…' : 'Upload & Mark Complete'}
+              </button>
+            </div>
+          )}
         </div>
       ))}
     </div>
