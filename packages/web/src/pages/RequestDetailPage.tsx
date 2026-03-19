@@ -3,6 +3,7 @@ import { apiFetch, getMockUserId } from '../api';
 
 type RequestDetail = {
   id: string;
+  request_code?: string;
   status: string;
   material_description: string;
   purpose_description: string;
@@ -107,7 +108,9 @@ export default function RequestDetailPage({ requestId, onBack }: Props): React.R
     <div>
       <button onClick={onBack} style={btnSecondary}>Back</button>
       <h2>Request Detail</h2>
-      <p><strong>ID:</strong> {detail.id}</p>
+      <p>
+        <strong>ID:</strong> {detail.request_code ?? detail.id}
+      </p>
       <p><strong>Status:</strong> {detail.status}</p>
 
       <h3>Request Data</h3>

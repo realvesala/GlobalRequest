@@ -3,6 +3,7 @@ import { apiFetch } from '../api';
 
 type RequestRow = {
   id: string;
+  request_code?: string;
   method_name?: string;
   status: string;
   submitted_at: string;
@@ -54,7 +55,7 @@ export default function RequestListPage({ onOpenRequest }: Props): React.ReactEl
           )}
           {items.map((r) => (
             <tr key={r.id} style={{ borderBottom: '1px solid #eee' }}>
-              <td style={td}>{r.id}</td>
+              <td style={td}>{r.request_code ?? r.id}</td>
               <td style={td}>{r.method_name ?? r.title ?? '—'}</td>
               <td style={td}>{r.status}</td>
               <td style={td}>{r.submitted_at}</td>

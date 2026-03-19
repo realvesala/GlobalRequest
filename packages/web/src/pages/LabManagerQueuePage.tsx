@@ -3,6 +3,7 @@ import { apiFetch } from '../api';
 
 interface Request {
   id: string;
+  request_code?: string;
   title: string;
   status: string;
   region: string;
@@ -240,7 +241,9 @@ export default function LabManagerQueuePage(): React.ReactElement {
               <strong>{req.title ?? req.id}</strong>
               {req.region && <span style={{ marginLeft: '0.75rem', color: '#666', fontSize: '0.9rem' }}>Region: {req.region}</span>}
               {req.requestor_name && <span style={{ marginLeft: '0.75rem', color: '#666', fontSize: '0.9rem' }}>By: {req.requestor_name}</span>}
-              <span style={{ marginLeft: '0.75rem', fontSize: '0.85rem', color: '#888' }}>ID: {req.id}</span>
+              <span style={{ marginLeft: '0.75rem', fontSize: '0.85rem', color: '#888' }}>
+                ID: {req.request_code ?? req.id}
+              </span>
             </div>
             <span style={{ background: '#e8f4fd', color: '#1a6fa8', padding: '0.2rem 0.6rem', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600 }}>
               {req.status}

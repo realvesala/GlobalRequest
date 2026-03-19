@@ -70,6 +70,46 @@ export function createRequestsRouter(db: Database.Database): Router {
     return false;
   }
 
+  function methodAbbreviation(methodName: string | undefined | null): string {
+    const cleaned = (methodName ?? '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase();
+    const abbr = cleaned.slice(0, 3);
+    if (abbr.length >= 3) return abbr;
+    return abbr.padEnd(3, 'X') || 'XXX';
+  }
+
+  /**
+   * Builds a stable, human-friendly request code:
+   *   [METHOD_ABBR]-[YEAR]-[SEQ_0001..]
+   *
+   * Sequence is computed based on submitted_at ordering per method/year.
+   */
+  function requestCodeForRow(params: {
+    requestId: string;
+    methodId: string;
+    methodName: string | undefined;
+    submittedAt: string;
+  }): string {
+    const { requestId, methodId, methodName, submittedAt } = params;
+    const year = submittedAt.slice(0, 4);
+    const count = db
+      .prepare(
+        `SELECT COUNT(*) as cnt
+         FROM requests r2
+         WHERE r2.method_id = ?
+           AND substr(r2.submitted_at, 1, 4) = ?
+           AND (
+             r2.submitted_at < ?
+             OR (r2.submitted_at = ? AND r2.id < ?)
+           )`
+      )
+      .get(methodId, year, submittedAt, submittedAt, requestId) as { cnt: number };
+
+    const seq = (count?.cnt ?? 0) + 1;
+    return `${methodAbbreviation(methodName)}-${year}-${String(seq).padStart(4, '0')}`;
+  }
+
   // GET /requests — role-aware request list
   router.get('/', (req, res) => {
     const user = req.user!;
@@ -125,6 +165,12 @@ export function createRequestsRouter(db: Database.Database): Router {
       ...r,
       title: `${r.method_name} — ${r.material_description}`,
       region: r.requestor_region,
+      request_code: requestCodeForRow({
+        requestId: r.id,
+        methodId: r.method_id,
+        methodName: r.method_name,
+        submittedAt: r.submitted_at,
+      }),
     }));
 
     res.json({ requests });
@@ -218,6 +264,12 @@ export function createRequestsRouter(db: Database.Database): Router {
         ...requestRow,
         title: `${requestRow.method_name} — ${requestRow.material_description}`,
         region: requestRow.requestor_region,
+        request_code: requestCodeForRow({
+          requestId: requestRow.id,
+          methodId: requestRow.method_id,
+          methodName: requestRow.method_name,
+          submittedAt: requestRow.submitted_at,
+        }),
       },
       history,
       results,
@@ -594,8 +646,14 @@ export function createRequestsRouter(db: Database.Database): Router {
        VALUES (?, ?, ?, ?, ?, ?, 'Submitted', ?, ?)`
     ).run(id, requestorId, method_id, material_description, purpose_description, desired_completion, now, now);
 
-    const created = db.prepare('SELECT * FROM requests WHERE id = ?').get(id);
-    res.status(201).json(created);
+    const created = db.prepare('SELECT * FROM requests WHERE id = ?').get(id) as any;
+    const request_code = requestCodeForRow({
+      requestId: created.id,
+      methodId: created.method_id,
+      methodName: method.name,
+      submittedAt: created.submitted_at,
+    });
+    res.status(201).json({ ...created, request_code });
   });
 
   // POST /requests/:id/results — Lab_Technician only

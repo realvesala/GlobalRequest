@@ -3,6 +3,7 @@ import { apiFetch } from '../api';
 
 interface Request {
   id: string;
+  request_code?: string;
   title: string;
   status: string;
   region: string;
@@ -163,7 +164,7 @@ export default function TechnicianQueuePage(): React.ReactElement {
                 </span>
               )}
               <span style={{ marginLeft: '0.75rem', fontSize: '0.85rem', color: '#888' }}>
-                ID: {req.id}
+                ID: {req.request_code ?? req.id}
               </span>
             </div>
             <span
