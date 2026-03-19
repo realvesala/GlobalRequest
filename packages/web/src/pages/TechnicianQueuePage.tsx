@@ -22,8 +22,11 @@ export default function TechnicianQueuePage(): React.ReactElement {
   const [noteError, setNoteError] = useState<Record<string, string>>({});
   const [noteSuccess, setNoteSuccess] = useState<Record<string, string>>({});
 
-  // Per-request "mark complete" placeholder message
-  const [completeMsg, setCompleteMsg] = useState<Record<string, boolean>>({});
+  // Per-request result upload state
+  const [selectedFile, setSelectedFile] = useState<Record<string, File | null>>({});
+  const [uploadSubmitting, setUploadSubmitting] = useState<Record<string, boolean>>({});
+  const [uploadError, setUploadError] = useState<Record<string, string>>({});
+  const [uploadSuccess, setUploadSuccess] = useState<Record<string, string>>({});
 
   useEffect(() => {
     apiFetch('/requests')
@@ -70,6 +73,42 @@ export default function TechnicianQueuePage(): React.ReactElement {
       setNoteError((prev) => ({ ...prev, [requestId]: (err as Error).message }));
     } finally {
       setNoteSubmitting((prev) => ({ ...prev, [requestId]: false }));
+    }
+  }
+
+  async function handleResultUpload(requestId: string) {
+    const file = selectedFile[requestId];
+    if (!file) {
+      setUploadError((prev) => ({ ...prev, [requestId]: 'Please select a result file first.' }));
+      return;
+    }
+
+    setUploadSubmitting((prev) => ({ ...prev, [requestId]: true }));
+    setUploadError((prev) => ({ ...prev, [requestId]: '' }));
+    setUploadSuccess((prev) => ({ ...prev, [requestId]: '' }));
+
+    try {
+      const form = new FormData();
+      // Backend expects field name `file`
+      form.append('file', file, file.name);
+
+      const res = await apiFetch(`/requests/${requestId}/results`, {
+        method: 'POST',
+        body: form,
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Result upload failed.');
+      }
+
+      setUploadSuccess((prev) => ({ ...prev, [requestId]: 'Result uploaded; status updated.' }));
+      // Request leaves In_Progress queue after transition to Results_Ready
+      setRequests((prev) => prev.filter((r) => r.id !== requestId));
+    } catch (e) {
+      setUploadError((prev) => ({ ...prev, [requestId]: (e as Error).message }));
+    } finally {
+      setUploadSubmitting((prev) => ({ ...prev, [requestId]: false }));
     }
   }
 
@@ -165,20 +204,26 @@ export default function TechnicianQueuePage(): React.ReactElement {
 
           {/* Mark complete */}
           <div style={{ marginTop: '0.75rem' }}>
+            <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 500 }}>
+              Upload Result File
+              <input
+                type="file"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setSelectedFile((prev) => ({ ...prev, [req.id]: f }));
+                }}
+                style={{ display: 'block', marginTop: '0.35rem' }}
+              />
+            </label>
+            {uploadError[req.id] && <p style={{ color: 'red', margin: '0.35rem 0 0.2rem' }}>{uploadError[req.id]}</p>}
+            {uploadSuccess[req.id] && <p style={{ color: 'green', margin: '0.35rem 0 0.2rem' }}>{uploadSuccess[req.id]}</p>}
             <button
-              onClick={() =>
-                setCompleteMsg((prev) => ({ ...prev, [req.id]: !prev[req.id] }))
-              }
-              title="Result upload coming in task 9"
-              style={completeBtn}
+              onClick={() => void handleResultUpload(req.id)}
+              disabled={uploadSubmitting[req.id]}
+              style={{ ...primaryBtn, marginTop: '0.5rem' }}
             >
-              Mark Complete
+              {uploadSubmitting[req.id] ? 'Uploading…' : 'Upload & Mark Complete'}
             </button>
-            {completeMsg[req.id] && (
-              <p style={{ marginTop: '0.4rem', color: '#888', fontStyle: 'italic', fontSize: '0.875rem' }}>
-                Result upload flow coming in task 9.
-              </p>
-            )}
           </div>
         </div>
       ))}
@@ -207,12 +252,4 @@ const primaryBtn: React.CSSProperties = {
   fontSize: '0.875rem',
 };
 
-const completeBtn: React.CSSProperties = {
-  padding: '0.3rem 0.9rem',
-  background: 'transparent',
-  color: '#555',
-  border: '1px solid #aaa',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  fontSize: '0.875rem',
-};
+// (Mark complete button removed; now result upload drives status transition)
