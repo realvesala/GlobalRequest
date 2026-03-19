@@ -103,23 +103,28 @@ function createRequestsRouter(db) {
         const user = req.user;
         let rows = [];
         if (user.role === 'Admin') {
-            rows = db.prepare(`SELECT r.*, u.display_name AS requestor_name, u.region AS requestor_region, m.name AS method_name
+            rows = db.prepare(`SELECT r.*, u.display_name AS requestor_name, u.region AS requestor_region, m.name AS method_name,
+                l.name AS assigned_lab_name
          FROM requests r
          JOIN users u ON u.id = r.requestor_id
          JOIN methods m ON m.id = r.method_id
+         LEFT JOIN labs l ON l.id = r.assigned_lab_id
          ORDER BY r.submitted_at DESC`).all();
         }
         else if (user.role === 'Requestor') {
-            rows = db.prepare(`SELECT r.*, u.display_name AS requestor_name, u.region AS requestor_region, m.name AS method_name
+            rows = db.prepare(`SELECT r.*, u.display_name AS requestor_name, u.region AS requestor_region, m.name AS method_name,
+                l.name AS assigned_lab_name
          FROM requests r
          JOIN users u ON u.id = r.requestor_id
          JOIN methods m ON m.id = r.method_id
+         LEFT JOIN labs l ON l.id = r.assigned_lab_id
          WHERE r.requestor_id = ?
          ORDER BY r.submitted_at DESC`).all(user.id);
         }
         else if (user.role === 'Lab_Technician') {
             const techRegion = user.region ?? '';
-            rows = db.prepare(`SELECT r.*, u.display_name AS requestor_name, u.region AS requestor_region, m.name AS method_name
+            rows = db.prepare(`SELECT r.*, u.display_name AS requestor_name, u.region AS requestor_region, m.name AS method_name,
+                l.name AS assigned_lab_name
          FROM requests r
          JOIN users u ON u.id = r.requestor_id
          JOIN methods m ON m.id = r.method_id

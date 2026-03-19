@@ -8,6 +8,7 @@ type RequestRow = {
   status: string;
   submitted_at: string;
   assigned_lab_id: string | null;
+  assigned_lab_name?: string;
   title?: string;
 };
 
@@ -59,7 +60,7 @@ export default function RequestListPage({ onOpenRequest }: Props): React.ReactEl
               <td style={td}>{r.method_name ?? r.title ?? '—'}</td>
               <td style={td}>{r.status}</td>
               <td style={td}>{r.submitted_at}</td>
-              <td style={td}>{r.assigned_lab_id ?? '—'}</td>
+              <td style={td}>{r.assigned_lab_name ?? r.assigned_lab_id ?? '—'}</td>
               <td style={td}>
                 <button style={btn} onClick={() => onOpenRequest(r.id)}>
                   Open
