@@ -18,7 +18,18 @@ interface Lab {
   methods: Method[];
 }
 
-type Tab = 'labs' | 'methods';
+interface User {
+  id: string;
+  sso_subject: string;
+  email: string;
+  display_name: string;
+  role: string;
+  region: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+type Tab = 'labs' | 'methods' | 'users';
 
 export default function AdminPage(): React.ReactElement {
   const [tab, setTab] = useState<Tab>('labs');
@@ -53,8 +64,23 @@ export default function AdminPage(): React.ReactElement {
         >
           Methods
         </button>
+        <button
+          onClick={() => setTab('users')}
+          style={{
+            padding: '0.5rem 1.25rem',
+            background: tab === 'users' ? '#333' : '#eee',
+            color: tab === 'users' ? '#fff' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer',
+          }}
+        >
+          Users
+        </button>
       </div>
-      {tab === 'labs' ? <LabsTab /> : <MethodsTab />}
+      {tab === 'labs' && <LabsTab />}
+      {tab === 'methods' && <MethodsTab />}
+      {tab === 'users' && <UsersTab />}
     </div>
   );
 }
@@ -367,6 +393,173 @@ function MethodsTab(): React.ReactElement {
         </label>
         <button type="submit" disabled={submitting} style={btnStyle}>
           {submitting ? 'Creating…' : 'Create Method'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function UsersTab(): React.ReactElement {
+  const [users, setUsers] = useState<User[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const roles = ['Requestor', 'Lab_Technician', 'Lab_Manager', 'Admin'] as const;
+
+  const [form, setForm] = useState<{
+    sso_subject: string;
+    email: string;
+    display_name: string;
+    role: (typeof roles)[number];
+    region: string;
+  }>({
+    sso_subject: '',
+    email: '',
+    display_name: '',
+    role: 'Requestor',
+    region: '',
+  });
+
+  async function load() {
+    try {
+      const res = await apiFetch('/admin/users');
+      if (!res.ok) throw new Error('Failed to load users');
+      const data = (await res.json()) as { users: User[] };
+      setUsers(data.users ?? []);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    setSubmitting(true);
+
+    try {
+      const res = await apiFetch('/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sso_subject: form.sso_subject,
+          email: form.email,
+          display_name: form.display_name,
+          role: form.role,
+          region: form.region ? form.region : undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? 'Failed to create user');
+      }
+
+      setForm({ sso_subject: '', email: '', display_name: '', role: 'Requestor', region: '' });
+      await load();
+    } catch (e) {
+      setFormError((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (error) return <p style={{ color: 'red' }}>{error}</p>;
+
+  return (
+    <div>
+      <h3>Users</h3>
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem' }}>
+        <thead>
+          <tr style={{ background: '#f0f0f0' }}>
+            <th style={th}>Name</th>
+            <th style={th}>Role</th>
+            <th style={th}>Region</th>
+            <th style={th}>Email</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.length === 0 && (
+            <tr>
+              <td colSpan={4} style={{ padding: '0.75rem', textAlign: 'center', color: '#888' }}>
+                No users found.
+              </td>
+            </tr>
+          )}
+          {users.map((u) => (
+            <tr key={u.id} style={{ borderBottom: '1px solid #eee' }}>
+              <td style={td}>{u.display_name}</td>
+              <td style={td}>{u.role}</td>
+              <td style={td}>{u.region ?? <span style={{ color: '#aaa' }}>—</span>}</td>
+              <td style={td}>{u.email}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <h3>Create User</h3>
+      <form
+        onSubmit={handleCreate}
+        style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '540px' }}
+      >
+        {formError && <p style={{ color: 'red', margin: 0 }}>{formError}</p>}
+        <label>
+          Display Name *
+          <input
+            required
+            value={form.display_name}
+            onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
+            style={inputStyle}
+          />
+        </label>
+        <label>
+          Email *
+          <input
+            required
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            style={inputStyle}
+          />
+        </label>
+        <label>
+          SSO Subject *
+          <input
+            required
+            value={form.sso_subject}
+            onChange={(e) => setForm((f) => ({ ...f, sso_subject: e.target.value }))}
+            style={inputStyle}
+          />
+        </label>
+        <label>
+          Role *
+          <select
+            value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as typeof roles[number] }))}
+            style={{ ...inputStyle, marginTop: '0.25rem' }}
+          >
+            {roles.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Region
+          <input
+            value={form.region}
+            onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
+            style={inputStyle}
+          />
+        </label>
+
+        <button type="submit" disabled={submitting} style={btnStyle}>
+          {submitting ? 'Creating…' : 'Create User'}
         </button>
       </form>
     </div>

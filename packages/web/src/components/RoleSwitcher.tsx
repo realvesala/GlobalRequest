@@ -13,19 +13,34 @@ export default function RoleSwitcher(): React.ReactElement {
   const [selected, setSelected] = useState<string>(getMockUserId() ?? '');
 
   useEffect(() => {
-    fetch('http://localhost:3001/users')
-      .then((r) => r.json())
-      .then((data: DemoUser[]) => {
+    let alive = true;
+
+    async function loadUsers(): Promise<void> {
+      try {
+        const r = await fetch('http://localhost:3001/users');
+        const data = (await r.json()) as DemoUser[];
+        if (!alive) return;
         setUsers(data);
+
         // Auto-select first user if nothing stored yet
         if (!getMockUserId() && data.length > 0) {
           setMockUserId(data[0].id);
           setSelected(data[0].id);
         }
-      })
-      .catch(() => {
+      } catch {
         // API not reachable — silently ignore
-      });
+      }
+    }
+
+    void loadUsers();
+    const interval = window.setInterval(() => {
+      void loadUsers();
+    }, 5000);
+
+    return () => {
+      alive = false;
+      window.clearInterval(interval);
+    };
   }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>): void {

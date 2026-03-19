@@ -68,9 +68,6 @@ function createApp(db) {
     app.use('/auth', authRouter);
     // Admin routes — Admin only (labs, methods, users stubs)
     const adminRouter = (0, admin_1.createAdminRouter)(db);
-    // Users stubs (managed by a future task)
-    adminRouter.get('/users', (_req, res) => res.json({ users: [] }));
-    adminRouter.put('/users/:id/role', (_req, res) => res.json({ updated: true }));
     app.use('/admin', adminRouter);
     // Requests routes
     const requestsRouter = (0, requests_1.createRequestsRouter)(db);

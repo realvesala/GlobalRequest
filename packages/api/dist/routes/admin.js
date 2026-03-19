@@ -13,6 +13,67 @@ function createAdminRouter(db) {
     });
     // Labs and method modifications require Admin role
     router.use((0, requireRole_1.requireRole)('Admin'));
+    // ── Users ─────────────────────────────────────────────────────────────────
+    const ALLOWED_ROLES = ['Requestor', 'Lab_Technician', 'Lab_Manager', 'Admin'];
+    router.get('/users', (_req, res) => {
+        const users = db
+            .prepare(`SELECT id, sso_subject, email, display_name, role, region, created_at, updated_at
+         FROM users
+         ORDER BY created_at ASC`)
+            .all();
+        res.json({ users });
+    });
+    router.post('/users', (req, res) => {
+        const { sso_subject, email, display_name, role, region } = req.body;
+        if (!sso_subject || !email || !display_name || !role) {
+            res.status(422).json({ error: 'sso_subject, email, display_name and role are required' });
+            return;
+        }
+        if (!ALLOWED_ROLES.includes(role)) {
+            res.status(422).json({ error: 'Invalid role' });
+            return;
+        }
+        const id = (0, uuid_1.v4)();
+        const now = new Date().toISOString();
+        const roleTyped = role;
+        try {
+            db.prepare(`INSERT INTO users
+          (id, sso_subject, email, display_name, role, region, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, sso_subject, email, display_name, roleTyped, region ?? null, now, now);
+        }
+        catch (e) {
+            const msg = e.message ?? '';
+            if (msg.includes('UNIQUE')) {
+                res.status(409).json({ error: 'User with same sso_subject already exists' });
+                return;
+            }
+            res.status(500).json({ error: 'Failed to create user' });
+            return;
+        }
+        const created = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+        res.status(201).json(created);
+    });
+    router.put('/users/:id/role', (req, res) => {
+        const { id } = req.params;
+        const { role } = req.body;
+        if (!role) {
+            res.status(400).json({ error: 'role is required' });
+            return;
+        }
+        if (!ALLOWED_ROLES.includes(role)) {
+            res.status(422).json({ error: 'Invalid role' });
+            return;
+        }
+        const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+        if (!existing) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+        const now = new Date().toISOString();
+        db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').run(role, now, id);
+        const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+        res.json(updated);
+    });
     // ── Labs ──────────────────────────────────────────────────────────────────
     router.get('/labs', (_req, res) => {
         const labs = db.prepare('SELECT * FROM labs ORDER BY created_at DESC').all();

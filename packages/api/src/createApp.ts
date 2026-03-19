@@ -37,9 +37,6 @@ export function createApp(db: Database.Database): Express {
 
   // Admin routes — Admin only (labs, methods, users stubs)
   const adminRouter = createAdminRouter(db);
-  // Users stubs (managed by a future task)
-  adminRouter.get('/users', (_req, res) => res.json({ users: [] }));
-  adminRouter.put('/users/:id/role', (_req, res) => res.json({ updated: true }));
   app.use('/admin', adminRouter);
 
   // Requests routes

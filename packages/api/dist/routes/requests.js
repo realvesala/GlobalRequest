@@ -35,8 +35,19 @@ function createRequestsRouter(db) {
             return true;
         if (user.role === 'Requestor')
             return requestRow.requestor_id === user.id;
-        if (user.role === 'Lab_Technician')
-            return requestRow.assigned_technician_id === user.id;
+        if (user.role === 'Lab_Technician') {
+            if (requestRow.assigned_technician_id === user.id)
+                return true;
+            // Lab zugewiesen, noch kein Techniker: Techniker derselben Region wie das Lab dürfen Details sehen (Pool).
+            if (requestRow.status === 'Assigned' && requestRow.assigned_lab_id) {
+                const lab = db
+                    .prepare('SELECT region FROM labs WHERE id = ?')
+                    .get(requestRow.assigned_lab_id);
+                if (lab && lab.region === (user.region ?? ''))
+                    return true;
+            }
+            return false;
+        }
         if (user.role === 'Lab_Manager') {
             // This PoC does not model explicit manager->lab ownership, so we scope by region:
             // - assigned requests whose lab is in manager's region
@@ -76,15 +87,19 @@ function createRequestsRouter(db) {
          ORDER BY r.submitted_at DESC`).all(user.id);
         }
         else if (user.role === 'Lab_Technician') {
+            const techRegion = user.region ?? '';
             rows = db.prepare(`SELECT r.*, u.display_name AS requestor_name, u.region AS requestor_region, m.name AS method_name
          FROM requests r
          JOIN users u ON u.id = r.requestor_id
          JOIN methods m ON m.id = r.method_id
+         LEFT JOIN labs l ON l.id = r.assigned_lab_id
          WHERE r.assigned_technician_id = ?
-         ORDER BY r.submitted_at DESC`).all(user.id);
+            OR (r.status = 'Assigned' AND l.id IS NOT NULL AND l.region = ?)
+         ORDER BY r.submitted_at DESC`).all(user.id, techRegion);
         }
         else if (user.role === 'Lab_Manager') {
-            rows = db.prepare(`SELECT r.*, u.display_name AS requestor_name, u.region AS requestor_region, m.name AS method_name, l.region AS assigned_lab_region
+            rows = db.prepare(`SELECT r.*, u.display_name AS requestor_name, u.region AS requestor_region, m.name AS method_name,
+                l.name AS assigned_lab_name, l.region AS assigned_lab_region
          FROM requests r
          JOIN users u ON u.id = r.requestor_id
          JOIN methods m ON m.id = r.method_id
@@ -102,6 +117,22 @@ function createRequestsRouter(db) {
             region: r.requestor_region,
         }));
         res.json({ requests });
+    });
+    // GET /requests/technicians — Lab_Manager / Admin (for assign-technician UI; must be before /:id)
+    router.get('/technicians', (0, requireRole_1.requireRole)('Lab_Manager', 'Admin'), (req, res) => {
+        const user = req.user;
+        if (user.role === 'Admin') {
+            const technicians = db
+                .prepare(`SELECT id, display_name, email, region FROM users WHERE role = 'Lab_Technician' ORDER BY display_name ASC`)
+                .all();
+            res.json({ technicians });
+            return;
+        }
+        const region = user.region ?? '';
+        const technicians = db
+            .prepare(`SELECT id, display_name, email, region FROM users WHERE role = 'Lab_Technician' AND IFNULL(region, '') = ? ORDER BY display_name ASC`)
+            .all(region);
+        res.json({ technicians });
     });
     // GET /requests/:id/history — ordered status history entries
     router.get('/:id/history', (req, res) => {
@@ -421,6 +452,10 @@ function createRequestsRouter(db) {
         // Validate request is In_Progress
         if (requestRow.status !== 'In_Progress') {
             res.status(409).json({ error: 'Request must be in In_Progress status to add notes', current_status: requestRow.status });
+            return;
+        }
+        if (requestRow.assigned_technician_id !== technicianId) {
+            res.status(403).json({ error: 'Forbidden: request is not assigned to this technician' });
             return;
         }
         // Parse existing notes and append new note
